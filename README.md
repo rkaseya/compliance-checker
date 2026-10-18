@@ -13,6 +13,8 @@ Outil d'audit de conformité automatisé, écrit en Python. Il se connecte à de
 - **Preuve pour chaque résultat** : la valeur réellement observée sur la machine est conservée, comme dans un audit.
 - **Audit de plusieurs machines** décrites dans un fichier de configuration, avec synthèse comparative.
 - **Authentification par clé SSH** avec un compte d'audit dédié (élévation de privilèges via `sudo`), ou par mot de passe.
+- **Vérification de l'identité des serveurs** : seules les machines dont l'empreinte est enregistrée dans `known_hosts` sont auditées, ce qui protège contre l'attaque de l'homme du milieu.
+- **Aucun secret dans le code** : les mots de passe sont lus dans des variables d'environnement (fichier `.env` non versionné).
 - **Rapport HTML** généré avec Jinja2, avec échappement des preuves pour empêcher toute injection de code (XSS) depuis une machine auditée.
 - **Architecture à plugins** : une vérification = un fichier, découvert automatiquement par le moteur.
 - **Robustesse** : une vérification en erreur ou une machine injoignable n'interrompt pas l'audit.
@@ -46,6 +48,7 @@ compliance-checker/
 ├── templates/
 │   └── rapport.html            # Template Jinja2 du rapport
 ├── cibles.yaml                 # Machines à auditer
+├── .env.exemple                # Modèle du fichier de secrets (.env, non versionné)
 ├── connexion.py                # Connexion SSH (clé ou mot de passe) et exécution
 ├── rapport.py                  # Génération du rapport HTML
 └── main.py                     # Moteur d'audit
@@ -100,6 +103,23 @@ docker build -t lab-durci lab/durci/
 docker run -d --name durci --cap-add=NET_ADMIN -p 127.0.0.1:2223:22 lab-durci
 ```
 
+### Secrets et empreintes des serveurs
+
+```bash
+cp .env.exemple .env          # puis renseigner LAB_VULN_PASSWORD
+ssh-keyscan -p 2222 127.0.0.1 >  known_hosts
+ssh-keyscan -p 2223 127.0.0.1 >> known_hosts
+```
+
+L'outil refuse toute machine absente de `known_hosts` ou dont l'empreinte a changé. Avant de faire confiance à une empreinte, on la compare à celle lue directement sur la machine :
+
+```bash
+ssh-keygen -lf known_hosts
+docker exec durci ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+Après la reconstruction d'un conteneur, sa clé change : il faut supprimer l'ancienne ligne (`ssh-keygen -R "[127.0.0.1]:2223" -f known_hosts`) puis l'enregistrer à nouveau.
+
 ## Utilisation
 
 ```bash
@@ -117,6 +137,12 @@ cibles:
     port: 2223
     user: auditeur
     cle: lab/durci/cle_audit
+
+  - nom: lab-vulnerable
+    host: 127.0.0.1
+    port: 2222
+    user: root
+    password_env: LAB_VULN_PASSWORD   # lu dans .env, jamais écrit ici
 ```
 
 ## Ajouter une vérification
@@ -140,8 +166,8 @@ Aucune modification du moteur n'est nécessaire.
 
 ## Limites connues
 
-- **Vérification de l'identité des serveurs** : la connexion accepte automatiquement la clé d'hôte de toute machine (`AutoAddPolicy`). Un audit réel devrait vérifier les empreintes connues pour se protéger d'une attaque de l'homme du milieu.
-- **Secrets** : le mot de passe de la machine vulnérable figure en clair dans `cibles.yaml` (acceptable pour un lab, à remplacer par des variables d'environnement ou un gestionnaire de secrets).
+- **Secrets** : le fichier `.env` reste un fichier en clair sur le poste de l'auditeur ; en entreprise, on utiliserait un gestionnaire de secrets (Vault, trousseau du système…).
+- **Enregistrement des empreintes** : `ssh-keyscan` fait confiance à la première réponse reçue ; l'empreinte doit être vérifiée par un autre canal avant d'être acceptée.
 - **Pare-feu en conteneur** : dans Docker, le filtrage est normalement assuré par l'hôte ; ce contrôle est surtout pertinent pour une VM ou un serveur physique.
 - **Compte d'audit** : il dispose de `sudo` sans restriction ; en production, ses droits devraient être limités aux seules commandes d'audit.
 
@@ -151,7 +177,7 @@ Aucune modification du moteur n'est nécessaire.
 - [x] Moteur d'audit à plugins rattaché au guide ANSSI
 - [x] Machine durcie, authentification par clé et audit multi-cibles
 - [x] Rapport HTML
-- [ ] Vérification des clés d'hôte et gestion des secrets
+- [x] Vérification des clés d'hôte et gestion des secrets
 - [ ] Nouvelles vérifications (journalisation, politique de mots de passe, services exposés…)
 - [ ] Export PDF du rapport
 - [ ] Interface web (Django) avec historique des audits

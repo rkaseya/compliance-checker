@@ -3,7 +3,7 @@ cibles:
     host: 127.0.0.1
     port: 2222
     user: root
-    password: root
+    password_env: LAB_VULN_PASSWORD   # le mot de passe est lu dans .env
 
   - nom: lab-durci
     host: 127.0.0.1

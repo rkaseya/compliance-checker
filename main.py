@@ -2,6 +2,7 @@ import importlib
 import pkgutil
 
 import yaml
+from dotenv import load_dotenv
 
 import checks
 from connexion import connecter
@@ -69,6 +70,7 @@ def afficher_console(audit):
 
 
 def main():
+    load_dotenv()  # charge les secrets depuis .env
     referentiel = charger_yaml("referentiels/anssi.yaml")
     cibles = charger_yaml("cibles.yaml")["cibles"]
     tous_les_checks = charger_checks()
