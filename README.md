@@ -1,0 +1,165 @@
+# Compliance Checker
+
+Outil d'audit de conformité automatisé, écrit en Python. Il se connecte à des machines Linux, vérifie leur configuration de sécurité et rattache chaque résultat aux mesures du **Guide d'hygiène informatique de l'ANSSI**, avec une preuve pour chaque contrôle, un taux de conformité par machine et un rapport HTML.
+
+![Rapport d'audit](docs/rapport.png)
+
+> Projet personnel en cours de développement : il évoluera vers une plateforme web de conformité et d'analyse de risques (voir la [feuille de route](#feuille-de-route)).
+
+## Fonctionnalités
+
+- **Vérifications techniques automatisées** via SSH : configuration SSH, pare-feu, mises à jour, permissions de fichiers sensibles.
+- **Rattachement à un référentiel** : chaque vérification est liée à une mesure du guide ANSSI, décrite dans un fichier YAML séparé du code.
+- **Preuve pour chaque résultat** : la valeur réellement observée sur la machine est conservée, comme dans un audit.
+- **Audit de plusieurs machines** décrites dans un fichier de configuration, avec synthèse comparative.
+- **Authentification par clé SSH** avec un compte d'audit dédié (élévation de privilèges via `sudo`), ou par mot de passe.
+- **Rapport HTML** généré avec Jinja2, avec échappement des preuves pour empêcher toute injection de code (XSS) depuis une machine auditée.
+- **Architecture à plugins** : une vérification = un fichier, découvert automatiquement par le moteur.
+- **Robustesse** : une vérification en erreur ou une machine injoignable n'interrompt pas l'audit.
+- **Lab Docker** fourni : une machine volontairement vulnérable et une machine durcie pour comparer les résultats.
+
+## Résultat sur le lab
+
+```
+=== Synthèse ===
+  lab-vulnerable       40 %
+  lab-durci            100 %
+```
+
+Les mêmes vérifications, appliquées à deux configurations différentes, mesurent concrètement l'effet du durcissement.
+
+## Architecture
+
+```
+compliance-checker/
+├── lab/
+│   ├── vulnerable/Dockerfile   # Cible mal configurée (root + mot de passe autorisés)
+│   └── durci/Dockerfile        # Cible durcie (compte d'audit, clé SSH, pare-feu)
+├── checks/                     # Une vérification = un fichier
+│   ├── ssh_root_login.py
+│   ├── ssh_password_auth.py
+│   ├── pare_feu.py
+│   ├── mises_a_jour.py
+│   └── permissions_shadow.py
+├── referentiels/
+│   └── anssi.yaml              # Correspondance mesures ANSSI ↔ vérifications
+├── templates/
+│   └── rapport.html            # Template Jinja2 du rapport
+├── cibles.yaml                 # Machines à auditer
+├── connexion.py                # Connexion SSH (clé ou mot de passe) et exécution
+├── rapport.py                  # Génération du rapport HTML
+└── main.py                     # Moteur d'audit
+```
+
+**Fonctionnement :**
+
+1. `main.py` découvre automatiquement les vérifications présentes dans `checks/`.
+2. Pour chaque machine de `cibles.yaml`, il ouvre une connexion SSH et exécute toutes les vérifications.
+3. Chaque vérification renvoie un résultat au format commun `{"conforme": bool, "preuve": str}`.
+4. Les résultats sont croisés avec le référentiel YAML (`evaluer`).
+5. Les mêmes données alimentent l'affichage console et le rapport HTML.
+
+Séparer le code technique (les vérifications) du référentiel (le YAML) permet d'ajouter un nouveau référentiel, par exemple ISO 27001, sans réécrire les vérifications. De même, passer d'une authentification par mot de passe à une authentification par clé n'a demandé aucune modification des vérifications : seul `connexion.py` s'adapte.
+
+## Vérifications actuelles
+
+| Mesure ANSSI | Vérification | Contrôle effectué |
+|---|---|---|
+| 8 | `ssh_root_login` | La connexion SSH directe en root est interdite |
+| 11 | `permissions_shadow` | `/etc/shadow` n'est pas lisible par tous |
+| 13 | `ssh_password_auth` | L'authentification SSH par mot de passe est désactivée |
+| 17 | `pare_feu` | Un pare-feu local (ufw) est installé et actif |
+| 34 | `mises_a_jour` | Aucune mise à jour de paquet en attente |
+
+## Installation
+
+Prérequis : Python 3.12+, Docker, Git.
+
+```bash
+git clone https://github.com/TON-PSEUDO/compliance-checker.git
+cd compliance-checker
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Lancer le lab
+
+Machine vulnérable :
+
+```bash
+docker build -t lab-cible lab/vulnerable/
+docker run -d --name cible -p 127.0.0.1:2222:22 lab-cible
+```
+
+Machine durcie (la clé du compte d'audit est générée localement et n'est jamais versionnée) :
+
+```bash
+ssh-keygen -t ed25519 -f lab/durci/cle_audit -N "" -C "auditeur"
+docker build -t lab-durci lab/durci/
+docker run -d --name durci --cap-add=NET_ADMIN -p 127.0.0.1:2223:22 lab-durci
+```
+
+## Utilisation
+
+```bash
+python main.py
+```
+
+L'audit s'affiche dans le terminal et un rapport HTML horodaté est créé dans `rapports/`.
+
+Les machines à auditer se déclarent dans `cibles.yaml` :
+
+```yaml
+cibles:
+  - nom: lab-durci
+    host: 127.0.0.1
+    port: 2223
+    user: auditeur
+    cle: lab/durci/cle_audit
+```
+
+## Ajouter une vérification
+
+1. Créer un fichier dans `checks/` respectant ce contrat :
+
+```python
+from connexion import executer
+
+ID = "mon_controle"
+DESCRIPTION = "Description lisible du contrôle"
+
+def run(client):
+    valeur = executer(client, "commande à exécuter sur la cible")
+    return {"conforme": ..., "preuve": valeur}
+```
+
+2. Rattacher son `ID` à une mesure dans `referentiels/anssi.yaml`.
+
+Aucune modification du moteur n'est nécessaire.
+
+## Limites connues
+
+- **Vérification de l'identité des serveurs** : la connexion accepte automatiquement la clé d'hôte de toute machine (`AutoAddPolicy`). Un audit réel devrait vérifier les empreintes connues pour se protéger d'une attaque de l'homme du milieu.
+- **Secrets** : le mot de passe de la machine vulnérable figure en clair dans `cibles.yaml` (acceptable pour un lab, à remplacer par des variables d'environnement ou un gestionnaire de secrets).
+- **Pare-feu en conteneur** : dans Docker, le filtrage est normalement assuré par l'hôte ; ce contrôle est surtout pertinent pour une VM ou un serveur physique.
+- **Compte d'audit** : il dispose de `sudo` sans restriction ; en production, ses droits devraient être limités aux seules commandes d'audit.
+
+## Feuille de route
+
+- [x] Lab Docker et premières vérifications SSH
+- [x] Moteur d'audit à plugins rattaché au guide ANSSI
+- [x] Machine durcie, authentification par clé et audit multi-cibles
+- [x] Rapport HTML
+- [ ] Vérification des clés d'hôte et gestion des secrets
+- [ ] Nouvelles vérifications (journalisation, politique de mots de passe, services exposés…)
+- [ ] Export PDF du rapport
+- [ ] Interface web (Django) avec historique des audits
+- [ ] Module d'analyse de risques inspiré d'EBIOS Risk Manager
+- [ ] Ajout du référentiel ISO 27001 avec correspondances inter-référentiels
+- [ ] Authentification, rôles et journal d'audit de l'application
+- [ ] Pipeline CI/CD avec tests et analyse de sécurité (pytest, Bandit, pip-audit)
+
+## Avertissement
+
+Cet outil est destiné à auditer des machines dont vous êtes propriétaire ou pour lesquelles vous disposez d'une autorisation explicite. La machine `lab/vulnerable` est volontairement vulnérable : ne l'exposez jamais sur un réseau.
