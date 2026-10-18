@@ -40,7 +40,7 @@ def evaluer(resultats, referentiel, tous_les_checks):
     mesures = []
     for mesure in referentiel["mesures"]:
         controles = [
-            {"description": tous_les_checks[c].DESCRIPTION, **resultats[c]}
+            {"id": c, "description": tous_les_checks[c].DESCRIPTION, **resultats[c]}
             for c in mesure["checks"]
         ]
         mesures.append({

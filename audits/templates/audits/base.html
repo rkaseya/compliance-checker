@@ -1,0 +1,31 @@
+{% load static %}<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block titre %}Compliance Checker{% endblock %}</title>
+<link rel="stylesheet" href="{% static 'audits/style.css' %}">
+</head>
+<body>
+<nav class="barre-nav">
+  <div class="contenu">
+    <a class="logo" href="{% url 'tableau_de_bord' %}">Compliance Checker</a>
+    {% if user.is_authenticated %}
+      <a href="{% url 'tableau_de_bord' %}">Tableau de bord</a>
+      {% if user.is_staff %}<a href="{% url 'admin:index' %}">Administration</a>{% endif %}
+      <div class="droite">
+        <span>{{ user.username }}</span>
+        {# La déconnexion se fait en POST, protégée par le jeton CSRF #}
+        <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Déconnexion</button></form>
+      </div>
+    {% endif %}
+  </div>
+</nav>
+<main>
+  {% if messages %}
+  <ul class="messages">{% for message in messages %}<li class="{{ message.tags }}">{{ message }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% block contenu %}{% endblock %}
+</main>
+</body>
+</html>

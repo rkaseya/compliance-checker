@@ -1,0 +1,49 @@
+{% extends "audits/base.html" %}
+{% block titre %}{{ cible.nom }} · Compliance Checker{% endblock %}
+{% block contenu %}
+<div class="entete">
+  <h1>{{ cible.nom }}</h1>
+  <div class="meta">{{ cible.user }}@{{ cible.host }}:{{ cible.port }} · authentification par {% if cible.cle %}clé SSH{% else %}mot de passe{% endif %}</div>
+  <div class="actions">
+    <form method="post" action="{% url 'auditer' cible.pk %}">{% csrf_token %}<button class="bouton" type="submit">Auditer maintenant</button></form>
+  </div>
+</div>
+
+<section class="graphique">
+  <h2>Évolution de la conformité</h2>
+  {% if graphique %}
+  <svg viewBox="0 0 {{ graphique.largeur }} {{ graphique.hauteur }}" role="img" aria-label="Évolution du taux de conformité">
+    {% for g in graphique.grille %}
+      <line class="grille-ligne" x1="{{ graphique.marge }}" x2="{{ graphique.largeur|add:"-30" }}" y1="{{ g.y }}" y2="{{ g.y }}"/>
+      <text class="axe" x="0" y="{{ g.y|add:"4" }}">{{ g.taux }} %</text>
+    {% endfor %}
+    <polyline class="courbe" points="{{ graphique.ligne }}"/>
+    {% for p in graphique.points %}
+      <a href="{% url 'audit_detail' p.audit.pk %}">
+        <circle cx="{{ p.x }}" cy="{{ p.y }}" r="5"><title>{{ p.audit.date|date:"d/m/Y H:i" }} : {{ p.audit.taux }} %</title></circle>
+      </a>
+    {% endfor %}
+  </svg>
+  {% else %}
+  <p class="meta">Aucun audit réussi pour l'instant.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Historique des audits</h2>
+  <table>
+    <thead><tr><th>Date</th><th>Statut</th><th>Conformité</th></tr></thead>
+    <tbody>
+    {% for a in audits %}
+      <tr>
+        <td><a href="{% url 'audit_detail' a.pk %}">{{ a.date|date:"d/m/Y H:i" }}</a></td>
+        <td>{{ a.get_statut_display }}</td>
+        <td class="{{ a.niveau }}">{% if a.taux is None %}–{% else %}{{ a.taux }} % ({{ a.conformes }}/{{ a.total }}){% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="3" class="meta">Aucun audit.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

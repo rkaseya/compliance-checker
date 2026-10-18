@@ -1,0 +1,42 @@
+{% extends "audits/base.html" %}
+{% block titre %}Audit {{ audit.cible.nom }} · Compliance Checker{% endblock %}
+{% block contenu %}
+<div class="entete">
+  <h1>Audit de <a href="{% url 'cible_detail' audit.cible.pk %}">{{ audit.cible.nom }}</a></h1>
+  <div class="meta">{{ audit.referentiel }} · {{ audit.date|date:"d/m/Y à H:i" }}</div>
+</div>
+
+{% if audit.statut == "erreur" %}
+<section><h2 class="mauvais">Audit impossible</h2><code>{{ audit.erreur }}</code></section>
+{% else %}
+<div class="grille">
+  <div class="carte">
+    <h3>Taux de conformité</h3>
+    <div class="chiffre {{ audit.niveau }}">{{ audit.taux }} %</div>
+    <div class="jauge"><div class="{{ audit.niveau }}-bg" style="width: {{ audit.taux }}%"></div></div>
+    <div class="meta">{{ audit.conformes }} / {{ audit.total }} mesures conformes</div>
+  </div>
+</div>
+
+<section>
+  <h2>Détail par mesure</h2>
+  <table>
+    <thead><tr><th>Statut</th><th>Mesure ANSSI</th><th>Contrôle</th><th>Preuve</th></tr></thead>
+    <tbody>
+    {% for mesure in audit.mesures.all %}
+      {% for c in mesure.controles.all %}
+      <tr>
+        {% if forloop.first %}
+        <td rowspan="{{ mesure.controles.all|length }}"><span class="badge {% if mesure.conforme %}ok{% else %}ko{% endif %}">{% if mesure.conforme %}OK{% else %}KO{% endif %}</span></td>
+        <td rowspan="{{ mesure.controles.all|length }}"><strong>{{ mesure.mesure_id }}</strong> – {{ mesure.titre }}</td>
+        {% endif %}
+        <td><span class="{% if c.conforme %}bon{% else %}mauvais{% endif %}">{% if c.conforme %}✔{% else %}✘{% endif %}</span> {{ c.description }}</td>
+        <td><code>{{ c.preuve }}</code></td>
+      </tr>
+      {% endfor %}
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

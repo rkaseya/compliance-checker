@@ -3,5 +3,6 @@ __pycache__/
 .DS_Store
 lab/durci/cle_audit*
 rapports/
-known_hosts
+known_hosts*
 .env
+db.sqlite3

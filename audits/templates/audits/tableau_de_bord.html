@@ -1,0 +1,54 @@
+{% extends "audits/base.html" %}
+{% block titre %}Tableau de bord · Compliance Checker{% endblock %}
+{% block contenu %}
+<div class="entete">
+  <h1>Tableau de bord</h1>
+  <div class="meta">{{ cibles|length }} cible{{ cibles|length|pluralize }} active{{ cibles|length|pluralize }} · {{ nb_audits }} audit{{ nb_audits|pluralize }} réalisé{{ nb_audits|pluralize }}{% if moyenne is not None %} · conformité moyenne : {{ moyenne }} %{% endif %}</div>
+</div>
+
+<div class="grille">
+{% for cible in cibles %}
+  <div class="carte">
+    <h3><a href="{% url 'cible_detail' cible.pk %}">{{ cible.nom }}</a></h3>
+    <div class="meta">{{ cible.user }}@{{ cible.host }}:{{ cible.port }}</div>
+    {% with a=cible.dernier_audit %}
+      {% if not a %}
+        <div class="chiffre erreur">–</div>
+        <div class="meta">Jamais auditée</div>
+      {% elif a.statut == "erreur" %}
+        <div class="chiffre erreur">Erreur</div>
+        <div class="meta">{{ a.erreur|truncatechars:90 }}</div>
+      {% else %}
+        <div class="chiffre {{ a.niveau }}">{{ a.taux }} %</div>
+        <div class="jauge"><div class="{{ a.niveau }}-bg" style="width: {{ a.taux }}%"></div></div>
+        <div class="meta">{{ a.conformes }} / {{ a.total }} mesures · <a href="{% url 'audit_detail' a.pk %}">audit du {{ a.date|date:"d/m/Y H:i" }}</a></div>
+      {% endif %}
+    {% endwith %}
+    <div class="actions">
+      <form method="post" action="{% url 'auditer' cible.pk %}">{% csrf_token %}<button class="bouton" type="submit">Auditer maintenant</button></form>
+      <a href="{% url 'cible_detail' cible.pk %}">Historique</a>
+    </div>
+  </div>
+{% empty %}
+  <div class="carte">Aucune cible. Importe-les avec <code>python manage.py importer_cibles</code> ou ajoute-les dans l'administration.</div>
+{% endfor %}
+</div>
+
+<section>
+  <h2>Derniers audits</h2>
+  <table>
+    <thead><tr><th>Date</th><th>Cible</th><th>Conformité</th></tr></thead>
+    <tbody>
+    {% for a in derniers_audits %}
+      <tr>
+        <td><a href="{% url 'audit_detail' a.pk %}">{{ a.date|date:"d/m/Y H:i" }}</a></td>
+        <td>{{ a.cible.nom }}</td>
+        <td class="{{ a.niveau }}">{% if a.taux is None %}Erreur{% else %}{{ a.taux }} %{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="3" class="meta">Aucun audit pour l'instant.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
