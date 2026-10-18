@@ -1,0 +1,12 @@
+cibles:
+  - nom: lab-vulnerable
+    host: 127.0.0.1
+    port: 2222
+    user: root
+    password: root
+
+  - nom: lab-durci
+    host: 127.0.0.1
+    port: 2223
+    user: auditeur
+    cle: lab/durci/cle_audit

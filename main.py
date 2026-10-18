@@ -6,7 +6,10 @@ import yaml
 import checks
 from connexion import connecter
 
-CIBLE = {"host": "127.0.0.1", "port": 2222, "user": "root", "password": "root"}
+
+def charger_yaml(chemin):
+    with open(chemin, encoding="utf-8") as f:
+        return yaml.safe_load(f)
 
 
 def charger_checks():
@@ -18,13 +21,8 @@ def charger_checks():
     return modules
 
 
-def main():
-    with open("referentiels/anssi.yaml", encoding="utf-8") as f:
-        referentiel = yaml.safe_load(f)
-
-    tous_les_checks = charger_checks()
-
-    client = connecter(**CIBLE)
+def auditer(cible, tous_les_checks):
+    client = connecter(cible)
     resultats = {}
     for check_id, module in tous_les_checks.items():
         try:
@@ -32,8 +30,11 @@ def main():
         except Exception as e:
             resultats[check_id] = {"conforme": False, "preuve": f"Erreur : {e}"}
     client.close()
+    return resultats
 
-    print(f"\n=== {referentiel['referentiel']} (v{referentiel['version']}) ===\n")
+
+def afficher_rapport(nom, resultats, referentiel, tous_les_checks):
+    print(f"\n=== {nom} | {referentiel['referentiel']} (v{referentiel['version']}) ===\n")
     conformes = 0
     for mesure in referentiel["mesures"]:
         ok = all(resultats[c]["conforme"] for c in mesure["checks"])
@@ -43,9 +44,32 @@ def main():
             r = resultats[c]
             print(f"      {'✔' if r['conforme'] else '✘'} {tous_les_checks[c].DESCRIPTION}")
             print(f"        preuve : {r['preuve']}")
-
     total = len(referentiel["mesures"])
-    print(f"\nTaux de conformité : {conformes}/{total} mesures ({conformes * 100 // total} %)\n")
+    taux = conformes * 100 // total
+    print(f"\nTaux de conformité : {conformes}/{total} mesures ({taux} %)")
+    return taux
+
+
+def main():
+    referentiel = charger_yaml("referentiels/anssi.yaml")
+    cibles = charger_yaml("cibles.yaml")["cibles"]
+    tous_les_checks = charger_checks()
+
+    synthese = {}
+    for cible in cibles:
+        try:
+            resultats = auditer(cible, tous_les_checks)
+        except Exception as e:
+            print(f"\n[!] Impossible d'auditer {cible['nom']} : {e}")
+            synthese[cible["nom"]] = None
+            continue
+        synthese[cible["nom"]] = afficher_rapport(cible["nom"], resultats, referentiel, tous_les_checks)
+
+    print("\n=== Synthèse ===")
+    for nom, taux in synthese.items():
+        etat = "inaccessible" if taux is None else f"{taux} %"
+        print(f"  {nom:<20} {etat}")
+    print()
 
 
 if __name__ == "__main__":
