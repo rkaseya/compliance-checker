@@ -84,7 +84,7 @@ Les vérifications lisent directement `/proc` et les fichiers système plutôt q
 Prérequis : Python 3.12+, Docker, Git.
 
 ```bash
-git clone https://github.com/TON-PSEUDO/compliance-checker.git
+git clone https://github.com/rkaseya/compliance-checker.git
 cd compliance-checker
 python3 -m venv .venv
 source .venv/bin/activate
@@ -150,6 +150,23 @@ cibles:
     password_env: LAB_VULN_PASSWORD   # lu dans .env, jamais écrit ici
 ```
 
+## Interface web (Django)
+
+Le même moteur est accessible depuis une interface web : tableau de bord, lancement d'un audit en un clic, historique et courbe d'évolution de la conformité, détail des preuves. Les résultats sont enregistrés en base et ne sont pas modifiables depuis l'interface.
+
+```bash
+pip install -r requirements.txt
+echo "DJANGO_SECRET_KEY=$(python -c 'import secrets; print(secrets.token_urlsafe(50))')" >> .env
+echo "DJANGO_DEBUG=1" >> .env
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py importer_cibles      # importe cibles.yaml en base
+python manage.py lancer_audit         # audit en ligne de commande (optionnel)
+python manage.py runserver
+```
+
+Puis ouvrir http://127.0.0.1:8000.
+
 ## Ajouter une vérification
 
 1. Créer un fichier dans `checks/` respectant ce contrat :
@@ -185,11 +202,15 @@ Aucune modification du moteur n'est nécessaire.
 - [x] Vérification des clés d'hôte et gestion des secrets
 - [x] Nouvelles vérifications (journalisation, politique de mots de passe, services exposés…)
 - [ ] Export PDF du rapport
-- [ ] Interface web (Django) avec historique des audits
+- [x] Interface web (Django) avec historique des audits
 - [ ] Module d'analyse de risques inspiré d'EBIOS Risk Manager
 - [ ] Ajout du référentiel ISO 27001 avec correspondances inter-référentiels
 - [ ] Authentification, rôles et journal d'audit de l'application
 - [ ] Pipeline CI/CD avec tests et analyse de sécurité (pytest, Bandit, pip-audit)
+
+## Méthode de développement
+
+Ce projet est réalisé avec l'assistance de Claude (Anthropic), qui a écrit la majeure partie du code en m'accompagnant étape par étape. Mon objectif est d'apprendre : comprendre chaque brique (SSH, durcissement Linux, référentiels de conformité, développement web sécurisé) et être capable d'expliquer les choix techniques. Je ne maîtrise pas encore toutes les opérations effectuées, et les retours sont les bienvenus.
 
 ## Avertissement
 
