@@ -24,7 +24,7 @@ Outil d'audit de conformité automatisé, écrit en Python. Il se connecte à de
 
 ```
 === Synthèse ===
-  lab-vulnerable       40 %
+  lab-vulnerable       22 %
   lab-durci            100 %
 ```
 
@@ -35,14 +35,9 @@ Les mêmes vérifications, appliquées à deux configurations différentes, mesu
 ```
 compliance-checker/
 ├── lab/
-│   ├── vulnerable/Dockerfile   # Cible mal configurée (root + mot de passe autorisés)
+│   ├── vulnerable/Dockerfile   # Cible mal configurée (root, compte sans mot de passe, UID 0 caché, Telnet…)
 │   └── durci/Dockerfile        # Cible durcie (compte d'audit, clé SSH, pare-feu)
-├── checks/                     # Une vérification = un fichier
-│   ├── ssh_root_login.py
-│   ├── ssh_password_auth.py
-│   ├── pare_feu.py
-│   ├── mises_a_jour.py
-│   └── permissions_shadow.py
+├── checks/                     # Une vérification = un fichier (11 au total)
 ├── referentiels/
 │   └── anssi.yaml              # Correspondance mesures ANSSI ↔ vérifications
 ├── templates/
@@ -66,13 +61,23 @@ Séparer le code technique (les vérifications) du référentiel (le YAML) perme
 
 ## Vérifications actuelles
 
+11 vérifications couvrant 9 mesures du guide (une mesure peut nécessiter plusieurs contrôles) :
+
 | Mesure ANSSI | Vérification | Contrôle effectué |
 |---|---|---|
+| 5 | `uid0_unique` | Seul root possède l'UID 0 (aucun administrateur caché) |
 | 8 | `ssh_root_login` | La connexion SSH directe en root est interdite |
+| 8 | `root_verrouille` | Le mot de passe du compte root est verrouillé |
+| 10 | `politique_mdp` | Une longueur minimale de 12 caractères est imposée (pam_pwquality) |
+| 10 | `comptes_sans_mdp` | Aucun compte ne possède de mot de passe vide |
 | 11 | `permissions_shadow` | `/etc/shadow` n'est pas lisible par tous |
 | 13 | `ssh_password_auth` | L'authentification SSH par mot de passe est désactivée |
 | 17 | `pare_feu` | Un pare-feu local (ufw) est installé et actif |
+| 21 | `services_exposes` | Seuls les services autorisés (SSH) sont en écoute |
 | 34 | `mises_a_jour` | Aucune mise à jour de paquet en attente |
+| 36 | `journalisation` | Un service de journalisation (rsyslog) est actif |
+
+Les vérifications lisent directement `/proc` et les fichiers système plutôt que de dépendre d'outils (`ss`, `pgrep`…) absents des installations minimales.
 
 ## Installation
 
@@ -178,7 +183,7 @@ Aucune modification du moteur n'est nécessaire.
 - [x] Machine durcie, authentification par clé et audit multi-cibles
 - [x] Rapport HTML
 - [x] Vérification des clés d'hôte et gestion des secrets
-- [ ] Nouvelles vérifications (journalisation, politique de mots de passe, services exposés…)
+- [x] Nouvelles vérifications (journalisation, politique de mots de passe, services exposés…)
 - [ ] Export PDF du rapport
 - [ ] Interface web (Django) avec historique des audits
 - [ ] Module d'analyse de risques inspiré d'EBIOS Risk Manager
