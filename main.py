@@ -5,6 +5,7 @@ import yaml
 
 import checks
 from connexion import connecter
+from rapport import generer_rapport
 
 
 def charger_yaml(chemin):
@@ -33,21 +34,38 @@ def auditer(cible, tous_les_checks):
     return resultats
 
 
-def afficher_rapport(nom, resultats, referentiel, tous_les_checks):
-    print(f"\n=== {nom} | {referentiel['referentiel']} (v{referentiel['version']}) ===\n")
-    conformes = 0
+def evaluer(resultats, referentiel, tous_les_checks):
+    """Croise les résultats techniques avec les mesures du référentiel."""
+    mesures = []
     for mesure in referentiel["mesures"]:
-        ok = all(resultats[c]["conforme"] for c in mesure["checks"])
-        conformes += ok
-        print(f"[{'OK' if ok else 'KO'}] Mesure {mesure['id']} - {mesure['titre']}")
-        for c in mesure["checks"]:
-            r = resultats[c]
-            print(f"      {'✔' if r['conforme'] else '✘'} {tous_les_checks[c].DESCRIPTION}")
-            print(f"        preuve : {r['preuve']}")
-    total = len(referentiel["mesures"])
-    taux = conformes * 100 // total
-    print(f"\nTaux de conformité : {conformes}/{total} mesures ({taux} %)")
-    return taux
+        controles = [
+            {"description": tous_les_checks[c].DESCRIPTION, **resultats[c]}
+            for c in mesure["checks"]
+        ]
+        mesures.append({
+            "id": mesure["id"],
+            "titre": mesure["titre"],
+            "ok": all(c["conforme"] for c in controles),
+            "controles": controles,
+        })
+    conformes = sum(m["ok"] for m in mesures)
+    total = len(mesures)
+    return {"mesures": mesures, "conformes": conformes, "total": total,
+            "taux": conformes * 100 // total}
+
+
+def afficher_console(audit):
+    print(f"\n=== {audit['nom']} ===\n")
+    if audit["erreur"]:
+        print(f"[!] Impossible d'auditer : {audit['erreur']}")
+        return
+    e = audit["evaluation"]
+    for m in e["mesures"]:
+        print(f"[{'OK' if m['ok'] else 'KO'}] Mesure {m['id']} - {m['titre']}")
+        for c in m["controles"]:
+            print(f"      {'✔' if c['conforme'] else '✘'} {c['description']}")
+            print(f"        preuve : {c['preuve']}")
+    print(f"\nTaux de conformité : {e['conformes']}/{e['total']} mesures ({e['taux']} %)")
 
 
 def main():
@@ -55,21 +73,24 @@ def main():
     cibles = charger_yaml("cibles.yaml")["cibles"]
     tous_les_checks = charger_checks()
 
-    synthese = {}
+    audits = []
     for cible in cibles:
+        audit = {"nom": cible["nom"], "erreur": None, "evaluation": None}
         try:
             resultats = auditer(cible, tous_les_checks)
+            audit["evaluation"] = evaluer(resultats, referentiel, tous_les_checks)
         except Exception as e:
-            print(f"\n[!] Impossible d'auditer {cible['nom']} : {e}")
-            synthese[cible["nom"]] = None
-            continue
-        synthese[cible["nom"]] = afficher_rapport(cible["nom"], resultats, referentiel, tous_les_checks)
+            audit["erreur"] = str(e)
+        audits.append(audit)
+        afficher_console(audit)
 
     print("\n=== Synthèse ===")
-    for nom, taux in synthese.items():
-        etat = "inaccessible" if taux is None else f"{taux} %"
-        print(f"  {nom:<20} {etat}")
-    print()
+    for a in audits:
+        etat = "inaccessible" if a["erreur"] else f"{a['evaluation']['taux']} %"
+        print(f"  {a['nom']:<20} {etat}")
+
+    chemin = generer_rapport(audits, referentiel)
+    print(f"\nRapport HTML : {chemin}\n")
 
 
 if __name__ == "__main__":

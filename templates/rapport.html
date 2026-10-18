@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Rapport d'audit de conformité</title>
+<style>
+  :root { --ok:#1a7f37; --ko:#cf222e; --moyen:#bf8700; --fond:#f6f8fa; --texte:#1f2328; --bord:#d0d7de; --gris:#59636e; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--fond); color: var(--texte); margin: 0; padding: 32px 16px; }
+  .conteneur { max-width: 1100px; margin: 0 auto; }
+  header { margin-bottom: 32px; }
+  h1 { margin: 0 0 4px; font-size: 28px; }
+  .meta { color: var(--gris); font-size: 14px; }
+  .synthese { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 32px; }
+  .carte, section { background: #fff; border: 1px solid var(--bord); border-radius: 8px; padding: 20px; }
+  .carte h3 { margin: 0 0 12px; font-size: 16px; }
+  .taux { font-size: 36px; font-weight: 700; }
+  .barre { height: 8px; background: #eaeef2; border-radius: 4px; overflow: hidden; margin: 8px 0; }
+  .barre div { height: 100%; }
+  .bon { color: var(--ok); }      .bon-bg { background: var(--ok); }
+  .moyen { color: var(--moyen); } .moyen-bg { background: var(--moyen); }
+  .mauvais { color: var(--ko); }  .mauvais-bg { background: var(--ko); }
+  section { margin-bottom: 24px; overflow-x: auto; }
+  h2 { margin-top: 0; font-size: 20px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--bord); vertical-align: top; }
+  th { color: var(--gris); font-weight: 600; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; color: #fff; }
+  .badge.ok { background: var(--ok); } .badge.ko { background: var(--ko); }
+  code { background: var(--fond); padding: 2px 6px; border-radius: 4px; font-size: 13px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div class="conteneur">
+
+  <header>
+    <h1>Rapport d'audit de conformité</h1>
+    <div class="meta">{{ referentiel.referentiel }} (v{{ referentiel.version }}) · généré le {{ date }}</div>
+  </header>
+
+  <div class="synthese">
+  {% for audit in audits %}
+    <div class="carte">
+      <h3>{{ audit.nom }}</h3>
+      {% if audit.erreur %}
+        <div class="mauvais">Inaccessible : {{ audit.erreur }}</div>
+      {% else %}
+        {% set e = audit.evaluation %}
+        {% set niveau = "bon" if e.taux >= 80 else ("moyen" if e.taux >= 50 else "mauvais") %}
+        <div class="taux {{ niveau }}">{{ e.taux }} %</div>
+        <div class="barre"><div class="{{ niveau }}-bg" style="width: {{ e.taux }}%"></div></div>
+        <div class="meta">{{ e.conformes }} / {{ e.total }} mesures conformes</div>
+      {% endif %}
+    </div>
+  {% endfor %}
+  </div>
+
+  {% for audit in audits if not audit.erreur %}
+  <section>
+    <h2>{{ audit.nom }}</h2>
+    <table>
+      <thead><tr><th>Statut</th><th>Mesure ANSSI</th><th>Contrôle</th><th>Preuve</th></tr></thead>
+      <tbody>
+      {% for mesure in audit.evaluation.mesures %}
+        {% for c in mesure.controles %}
+        <tr>
+          {% if loop.first %}
+          <td rowspan="{{ mesure.controles|length }}"><span class="badge {{ 'ok' if mesure.ok else 'ko' }}">{{ 'OK' if mesure.ok else 'KO' }}</span></td>
+          <td rowspan="{{ mesure.controles|length }}"><strong>{{ mesure.id }}</strong> – {{ mesure.titre }}</td>
+          {% endif %}
+          <td><span class="{{ 'bon' if c.conforme else 'mauvais' }}">{{ '✔' if c.conforme else '✘' }}</span> {{ c.description }}</td>
+          <td><code>{{ c.preuve }}</code></td>
+        </tr>
+        {% endfor %}
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endfor %}
+
+</div>
+</body>
+</html>
