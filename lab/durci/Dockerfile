@@ -9,9 +9,10 @@ RUN apt-get update && apt-get upgrade -y && \
 RUN useradd -m -s /bin/bash auditeur && \
     echo 'auditeur ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/auditeur && \
     chmod 440 /etc/sudoers.d/auditeur
-COPY cle_audit.pub /home/auditeur/.ssh/authorized_keys
-RUN chown -R auditeur:auditeur /home/auditeur/.ssh && \
-    chmod 700 /home/auditeur/.ssh && chmod 600 /home/auditeur/.ssh/authorized_keys
+RUN mkdir -p /home/auditeur/.ssh && chown auditeur:auditeur /home/auditeur/.ssh && \
+    chmod 700 /home/auditeur/.ssh
+# Script de démarrage + clé publique si elle existe (le motif [b] la rend facultative)
+COPY demarrage.sh cle_audit.pu[b] /opt/lab/
 
 # Durcissement SSH : pas de root, pas de mot de passe
 RUN printf 'PermitRootLogin no\nPasswordAuthentication no\n' > /etc/ssh/sshd_config.d/00-durcissement.conf
@@ -26,4 +27,4 @@ RUN sed -i '/imklog/s/^/#/' /etc/rsyslog.conf
 RUN ufw default deny incoming && ufw allow 22/tcp
 
 EXPOSE 22
-CMD ["sh", "-c", "ufw --force enable; rsyslogd; exec /usr/sbin/sshd -D"]
+CMD ["sh", "/opt/lab/demarrage.sh"]

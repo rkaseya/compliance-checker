@@ -1,0 +1,13 @@
+# Cibles utilisées en mode docker compose : les machines sont jointes par leur nom de service
+cibles:
+  - nom: lab-vulnerable
+    host: cible
+    port: 22
+    user: root
+    password_env: LAB_VULN_PASSWORD
+
+  - nom: lab-durci
+    host: durci
+    port: 22
+    user: auditeur
+    cle: /donnees/cles/cle_audit

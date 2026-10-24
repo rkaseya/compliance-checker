@@ -1,0 +1,11 @@
+.git
+.venv
+.env
+.env.*
+known_hosts*
+db.sqlite3
+rapports
+lab
+docs
+**/__pycache__
+.DS_Store

@@ -4,7 +4,7 @@ from pathlib import Path
 import paramiko
 
 # Empreintes des serveurs autorisés, au format OpenSSH (voir README)
-FICHIER_EMPREINTES = Path("known_hosts")
+FICHIER_EMPREINTES = Path(os.environ.get("KNOWN_HOSTS", "known_hosts"))
 
 
 def _mot_de_passe(cible):

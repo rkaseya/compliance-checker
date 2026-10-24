@@ -79,6 +79,29 @@ Séparer le code technique (les vérifications) du référentiel (le YAML) perme
 
 Les vérifications lisent directement `/proc` et les fichiers système plutôt que de dépendre d'outils (`ss`, `pgrep`…) absents des installations minimales.
 
+## Démarrage rapide (Docker Compose)
+
+Seul prérequis : Docker. Une commande lance l'application web et les deux machines du lab :
+
+```bash
+git clone https://github.com/rkaseya/compliance-checker.git
+cd compliance-checker
+docker compose up --build
+```
+
+Au premier démarrage, l'application génère sa clé secrète, la clé SSH du compte d'audit et un compte administrateur au mot de passe aléatoire, puis lance un premier audit. Les identifiants s'affichent **une seule fois** dans le terminal :
+
+```
+ Compliance Checker est prêt : http://127.0.0.1:8000
+ Compte créé : admin / ...
+```
+
+- `Ctrl + C` arrête tout, `docker compose up` relance (les données sont conservées).
+- `docker compose down -v` supprime tout pour repartir de zéro.
+- Mot de passe perdu : `docker compose exec app python manage.py changepassword admin`.
+
+Les machines du lab ne sont joignables que sur un réseau Docker interne ; seule l'interface web est publiée, et uniquement sur `127.0.0.1`. Les empreintes SSH des cibles sont enregistrées au premier démarrage puis vérifiées à chaque audit : après une reconstruction des images (`--build` après modification d'un Dockerfile du lab), l'audit est refusé tant que les empreintes n'ont pas été réinitialisées (`docker compose down -v`).
+
 ## Installation
 
 Prérequis : Python 3.12+, Docker, Git.

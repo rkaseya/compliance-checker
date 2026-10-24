@@ -1,0 +1,38 @@
+# Lancement complet : docker compose up --build
+# Puis ouvrir http://127.0.0.1:8000 (identifiants affichés dans les logs au premier démarrage)
+
+services:
+  cible:                      # machine volontairement vulnérable
+    build: lab/vulnerable
+    networks: [lab]
+
+  durci:                      # machine durcie
+    build: lab/durci
+    cap_add: [NET_ADMIN]      # nécessaire pour activer son pare-feu (ufw)
+    volumes:
+      - cle_publique:/cle_publique:ro
+    networks: [lab]
+
+  app:                        # application web + moteur d'audit
+    build: .
+    depends_on: [cible, durci]
+    ports:
+      - "127.0.0.1:8000:8000" # accessible uniquement depuis ce poste
+    environment:
+      DJANGO_DB_PATH: /donnees/db.sqlite3
+      KNOWN_HOSTS: /donnees/known_hosts
+      DJANGO_DEBUG: "0"
+      # Mot de passe volontairement faible de la machine vulnérable (lab uniquement)
+      LAB_VULN_PASSWORD: root
+    volumes:
+      - donnees:/donnees      # base, clés et empreintes conservées entre deux démarrages
+      - cle_publique:/cle_publique
+    networks: [lab]
+
+# Réseau isolé : les machines du lab ne sont pas exposées sur le poste
+networks:
+  lab:
+
+volumes:
+  donnees:
+  cle_publique:
