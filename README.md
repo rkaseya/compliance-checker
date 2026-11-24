@@ -2,6 +2,8 @@
 
 Outil d'audit de conformité automatisé, écrit en Python. Il se connecte à des machines Linux, vérifie leur configuration de sécurité et rattache chaque résultat aux mesures du **Guide d'hygiène informatique de l'ANSSI**, avec une preuve pour chaque contrôle, un taux de conformité par machine et un rapport HTML.
 
+Premier projet réalisé en « vibe coding », pour comprendre l'architecture d'un tel outil et les limites de cette approche : voir [Méthode de développement](#méthode-de-développement).
+
 ![Rapport d'audit](docs/rapport.png)
 
 > Projet personnel en cours de développement : il évoluera vers une plateforme web de conformité et d'analyse de risques (voir la [feuille de route](#feuille-de-route)).
@@ -209,12 +211,48 @@ def run(client):
 
 Aucune modification du moteur n'est nécessaire.
 
+## Choix de conception et compromis
+
+### Moteur d'audit
+
+| Choix retenu | Alternative | Pourquoi | Ce que ça coûte |
+|---|---|---|---|
+| **Audit sans agent, par SSH** (`paramiko`) | Un agent installé sur chaque machine, ou un outil comme Ansible ou OpenSCAP | Rien à installer sur les cibles ; SSH est déjà présent et durci partout | Un compte d'audit avec `sudo` sur chaque cible ; une connexion par audit |
+| **Une vérification = un fichier**, découvert automatiquement | Toutes les vérifications dans un seul module | Ajouter un contrôle ne demande aucune modification du moteur ; chaque contrôle se lit et se teste isolément | Le contrat (`ID`, `DESCRIPTION`, `run`) n'est vérifié qu'à l'exécution |
+| **Référentiel en YAML**, séparé du code des vérifications | Les mesures écrites dans le code | Une même vérification peut servir plusieurs référentiels (ISO 27001 prévu) ; le référentiel se relit sans connaître Python | Une incohérence entre le YAML et les vérifications n'est détectée qu'au lancement |
+| **Une preuve pour chaque résultat** (la valeur observée) | Un simple « conforme / non conforme » | Comme dans un vrai audit, chaque conclusion est vérifiable et contestable | Les preuves sont du texte libre, peu exploitable automatiquement |
+| **Lecture directe de `/proc` et des fichiers système** | Commandes `ss`, `netstat`, `pgrep` | Fonctionne sur des installations minimales où ces outils sont absents | Il faut interpréter soi-même des formats bas niveau (ports en hexadécimal dans `/proc/net/tcp`) |
+| **Une erreur de vérification n'arrête pas l'audit** (elle est marquée non conforme) | S'arrêter à la première erreur | L'audit va au bout et signale ce qui n'a pas pu être vérifié | Une erreur et une vraie non-conformité apparaissent de la même façon dans le taux |
+| Une mesure est conforme **si tous ses contrôles le sont** | Un score partiel par mesure | Règle simple et stricte, proche de l'esprit d'un audit | Le taux ne distingue pas une mesure presque respectée d'une mesure ignorée |
+
+### Sécurité de l'outil
+
+| Choix retenu | Alternative | Pourquoi | Ce que ça coûte |
+|---|---|---|---|
+| **Refus de tout serveur inconnu** (`RejectPolicy` et `known_hosts`) | Accepter automatiquement les nouvelles empreintes (comportement par défaut de nombreux scripts) | Protège contre l'attaque de l'homme du milieu : un outil d'audit qui envoie des commandes `sudo` doit être sûr de parler à la bonne machine | Il faut enregistrer et vérifier les empreintes ; une machine reconstruite est refusée jusqu'à mise à jour |
+| **Secrets hors du code** (`.env`, variables d'environnement) ; seule la référence au secret figure dans `cibles.yaml` | Mots de passe dans le fichier de configuration | Le dépôt peut être publié sans fuite | Le `.env` reste un fichier en clair sur le poste de l'auditeur |
+| **Échappement des preuves** dans les rapports (Jinja2 et modèles Django) | Insérer les sorties telles quelles | Une machine auditée compromise pourrait renvoyer du code malveillant dans ses sorties (XSS contre l'auditeur) | Aucun (protection automatique du moteur de modèles) |
+| **Résultats non modifiables** depuis l'interface | Résultats éditables | Un historique d'audit doit être fiable : on ne retouche pas une preuve | Une erreur d'audit se corrige en relançant un audit, pas en modifiant le résultat |
+| **Lab isolé** : réseau Docker interne, interface publiée sur `127.0.0.1` uniquement ; serveur web lancé **sans privilèges** | Exposer les ports du lab et de l'application | La machine volontairement vulnérable n'est jamais joignable depuis le réseau | Démonstration limitée au poste local |
+
+### Interface web et déploiement
+
+| Choix retenu | Alternative | Pourquoi | Ce que ça coûte |
+|---|---|---|---|
+| **Django** pour l'interface web | Flask, FastAPI | Authentification, administration, ORM et migrations fournis : moins de code de sécurité à écrire soi-même | Un framework plus lourd à prendre en main |
+| **Réutiliser le moteur existant** (`audits/services.py` appelle `main.py`) | Réécrire l'audit dans l'application web | La ligne de commande et l'interface donnent exactement les mêmes résultats | Le moteur doit rester indépendant de Django |
+| **Enregistrement « tout ou rien »** des résultats (transaction) | Enregistrer au fil de l'eau | Un audit n'est jamais stocké à moitié | Aucun notable |
+| **SQLite** | PostgreSQL | Aucun serveur à installer ; suffisant pour un outil mono-utilisateur | Pas adapté à plusieurs utilisateurs simultanés |
+| **Docker Compose** avec initialisation automatique (clés, empreintes, compte administrateur aléatoire) | Installation manuelle | Démonstration complète en une commande, sans secret par défaut | Le serveur de développement de Django est utilisé (`runserver`), acceptable en local mais pas en production (il faudrait Gunicorn derrière un reverse proxy) |
+
 ## Limites connues
 
 - **Secrets** : le fichier `.env` reste un fichier en clair sur le poste de l'auditeur ; en entreprise, on utiliserait un gestionnaire de secrets (Vault, trousseau du système…).
 - **Enregistrement des empreintes** : `ssh-keyscan` fait confiance à la première réponse reçue ; l'empreinte doit être vérifiée par un autre canal avant d'être acceptée.
 - **Pare-feu en conteneur** : dans Docker, le filtrage est normalement assuré par l'hôte ; ce contrôle est surtout pertinent pour une VM ou un serveur physique.
 - **Compte d'audit** : il dispose de `sudo` sans restriction ; en production, ses droits devraient être limités aux seules commandes d'audit.
+- **Échec silencieux possible (fail-open)** : `executer()` ne lit ni le code de retour ni la sortie d'erreur des commandes. Si une commande échoue, par exemple faute de droits pour lire `/etc/shadow`, sa sortie est vide, et certaines vérifications concluent alors à la conformité (`comptes_sans_mdp` : « aucun compte sans mot de passe »). Correction prévue : vérifier le code de retour et marquer le contrôle « non vérifiable ».
+- **Serveur web de développement** : le conteneur lance `manage.py runserver`, acceptable sur `127.0.0.1` mais pas en production.
 
 ## Feuille de route
 
@@ -233,7 +271,19 @@ Aucune modification du moteur n'est nécessaire.
 
 ## Méthode de développement
 
-Ce projet est réalisé avec l'assistance de Claude (Anthropic), qui a écrit la majeure partie du code en m'accompagnant étape par étape. Mon objectif est d'apprendre : comprendre chaque brique (SSH, durcissement Linux, référentiels de conformité, développement web sécurisé) et être capable d'expliquer les choix techniques. Je ne maîtrise pas encore toutes les opérations effectuées, et les retours sont les bienvenus.
+Ce projet est mon **premier projet réalisé en « vibe coding »** : j'ai décrit à une IA (Claude) ce que je voulais obtenir, et elle a écrit la quasi-totalité du code. L'objectif n'était pas de développer moi-même les parties techniques, mais de :
+- **comprendre l'architecture** d'un outil d'audit complet : moteur à plugins, référentiel séparé du code, connexion SSH sécurisée, interface web, déploiement Docker ;
+- **observer les limites du vibe coding** sur un projet réel.
+
+| Partie | Mon rôle | Apport de l'IA |
+|---|---|---|
+| **Code** (moteur d'audit, vérifications, connexion SSH, rapports, interface Django, Docker) | Expression des besoins, lancement des audits sur le lab, relecture | Écriture du code |
+| **Architecture** | Compréhension et justification des choix (voir [Choix de conception et compromis](#choix-de-conception-et-compromis)) | Conception |
+| **Documentation** | Relecture et validation | Rédaction du README |
+
+**Ce que ce projet m'a appris sur le vibe coding.** Un code produit par une IA peut fonctionner, être bien organisé et sembler sûr, tout en cachant des défauts qu'on ne voit pas sans comprendre chaque ligne. Exemple concret, découvert lors d'une relecture ultérieure : la fonction `executer()` ignore les erreurs des commandes, si bien qu'une vérification qui échoue peut conclure à la conformité (voir [Limites connues](#limites-connues)). Pour un outil de sécurité, c'est précisément le type d'erreur le plus dangereux.
+
+C'est ce constat qui a changé ma façon de travailler sur les projets suivants ([PhishAnalyzer](https://github.com/rkaseya/phish-analyzer), [mini-SIEM](https://github.com/rkaseya/mini-siem)) : j'écris moi-même la logique principale, et l'IA joue un rôle de **mentor et de relecteur**.
 
 ## Avertissement
 
